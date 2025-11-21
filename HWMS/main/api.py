@@ -16,7 +16,9 @@ print(df)
 '''
 
 
-area_url = 'https://firms.modaps.eosdis.nasa.gov/api/area/csv/' + MAP_KEY + '/VIIRS_NOAA20_NRT/124,33,132,43/10/2025-11-21'
+area_url = 'https://firms.modaps.eosdis.nasa.gov/api/area/csv/' + MAP_KEY + '/VIIRS_NOAA20_NRT/124,33,131,38/10/2025-11-21'
 df_area = pd.read_csv(area_url)
 
 print(df_area)
+
+124,33,131,38
