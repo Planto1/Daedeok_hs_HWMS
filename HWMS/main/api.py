@@ -2,8 +2,10 @@ import pandas as pd
 from datetime import datetime
 from .models import FireDetection
 
+recent = datetime.now().strftime("%Y-%m-%d")
+
 MAP_KEY = '5872ff30914a691ad9aa8eaf6e5410a7'
-area_url = f'https://firms.modaps.eosdis.nasa.gov/api/area/csv/{MAP_KEY}/VIIRS_NOAA20_NRT/125,33,130,38.5/10/2025-11-21'
+area_url = f'https://firms.modaps.eosdis.nasa.gov/api/area/csv/{MAP_KEY}/VIIRS_NOAA20_NRT/125,33,130,38.5/10/2025-12-17'
 
 # 데이터 불러오기
 df_area = pd.read_csv(area_url)
