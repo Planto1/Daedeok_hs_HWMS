@@ -135,3 +135,7 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 NPM_BIN_PATH = r"C:\Program Files\nodejs\npm.cmd"
+
+# HWMS/settings.py에 추가
+GOOGLE_MAPS_API_KEY = 'AIzaSyDMgR74mjlB4MutK1-jqO8gthz-T45jtXg'  # 기존 키 사용
+FIRMS_API_KEY = '5872ff30914a691ad9aa8eaf6e5410a7'  # 기존 키 사용

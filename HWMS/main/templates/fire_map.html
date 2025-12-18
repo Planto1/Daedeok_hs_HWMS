@@ -1,119 +1,589 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Korea Fire Detection Map</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>한국 화재 모니터링 시스템</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        #map { width: 100%; height: 100vh; }
+    </style>
 </head>
-<body class="m-0 p-0 font-sans">
-    <!-- 사이드바 -->
-    <div id="sidebar" class="fixed left-0 top-0 h-full w-80 bg-white shadow-lg transform -translate-x-full transition-transform duration-300 z-10">
+<body class="m-0 p-0 font-sans overflow-hidden">
+    <!-- 왼쪽 사이드바 - 통계 -->
+    <div id="leftSidebar" class="fixed left-0 top-0 h-full w-96 bg-white shadow-xl transform transition-transform duration-300 z-20 overflow-y-auto">
         <div class="p-6">
-            <div class="flex justify-between items-center mb-6">
-                <h2 class="text-2xl font-bold text-gray-800">화재 정보</h2>
+            <div class="flex items-center gap-3 mb-6">
+                <span class="text-3xl">🔥</span>
+                <h1 class="text-2xl font-bold text-gray-800">화재 통계</h1>
             </div>
-            <div class="space-y-4">
-                <p class="text-gray-600">화재 감지 데이터가 여기에 표시됩니다.</p>
-                <div class="border-t pt-4">
-                    <h3 class="font-semibold text-lg mb-2">통계</h3>
-                    <p class="text-sm text-gray-600">총 화재 건수: <span id="fireCount" class="font-bold text-red-600">0</span></p>
+
+            <button onclick="loadFireData()" id="refreshBtn" class="w-full flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white px-4 py-3 rounded-lg transition-colors mb-4">
+                <span id="refreshIcon">🔄</span>
+                <span id="refreshText">데이터 새로고침</span>
+            </button>
+
+            <div id="lastUpdate" class="hidden flex items-center gap-2 text-sm text-gray-600 mb-6 bg-gray-50 p-3 rounded-lg">
+                <span>🕐</span>
+                <span id="updateTime"></span>
+            </div>
+
+            <div class="mb-6">
+                <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
+                    <span>📊</span> 화재 통계
+                </h2>
+                <div class="space-y-3">
+                    <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                        <span class="text-gray-700">총 감지</span>
+                        <span id="totalCount" class="font-bold text-xl text-gray-900">0</span>
+                    </div>
+                    <div class="flex justify-between items-center p-3 bg-purple-50 rounded-lg">
+                        <span class="text-purple-700">클러스터</span>
+                        <span id="clusterCount" class="font-bold text-xl text-purple-600">0</span>
+                    </div>
+                    <div class="flex justify-between items-center p-3 bg-red-50 rounded-lg">
+                        <span class="text-red-700">높은 신뢰도</span>
+                        <span id="highCount" class="font-bold text-xl text-red-600">0</span>
+                    </div>
+                    <div class="flex justify-between items-center p-3 bg-orange-50 rounded-lg">
+                        <span class="text-orange-700">보통 신뢰도</span>
+                        <span id="nominalCount" class="font-bold text-xl text-orange-600">0</span>
+                    </div>
+                    <div class="flex justify-between items-center p-3 bg-yellow-50 rounded-lg">
+                        <span class="text-yellow-700">낮은 신뢰도</span>
+                        <span id="lowCount" class="font-bold text-xl text-yellow-600">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-6">
+                <h3 class="font-semibold mb-3">신뢰도 범례</h3>
+                <div class="space-y-2">
+                    <div class="flex items-center gap-3">
+                        <div class="w-5 h-5 rounded-full bg-red-500"></div>
+                        <span class="text-sm text-gray-700">높음 (h)</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <div class="w-5 h-5 rounded-full bg-orange-500"></div>
+                        <span class="text-sm text-gray-700">보통 (n)</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <div class="w-5 h-5 rounded-full bg-yellow-500"></div>
+                        <span class="text-sm text-gray-700">낮음 (l)</span>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <h3 class="font-semibold mb-3 flex items-center gap-2">
+                    <span>📍</span> 화재 클러스터 (<span id="clusterListCount">0</span>)
+                </h3>
+                <div id="clusterList" class="space-y-2 max-h-96 overflow-y-auto"></div>
+            </div>
+        </div>
+        
+        <button id="toggleLeftSidebar" class="absolute right-0 top-1/2 transform translate-x-full -translate-y-1/2 bg-white shadow-lg rounded-r-lg px-2 py-8 hover:bg-gray-50 transition-colors">
+            <span id="leftArrowIcon" class="text-xl font-bold text-gray-600">◀</span>
+        </button>
+    </div>
+
+    <!-- 오른쪽 사이드바 - 날짜 검색 -->
+    <div id="rightSidebar" class="fixed right-0 top-0 h-full w-96 bg-white shadow-xl transform transition-transform duration-300 z-20 overflow-y-auto">
+        <div class="p-6">
+            <div class="flex items-center gap-3 mb-6">
+                <span class="text-3xl">📅</span>
+                <h1 class="text-2xl font-bold text-gray-800">기간 검색</h1>
+            </div>
+
+            <div class="space-y-4 mb-6">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">시작 날짜</label>
+                    <input type="date" id="startDate" value="2025-12-17" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">종료 날짜</label>
+                    <input type="date" id="endDate" value="2025-12-19" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+
+                <button onclick="handleDateSearch()" class="w-full flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 text-white px-4 py-3 rounded-lg transition-colors">
+                    <span>🔍</span> 검색
+                </button>
+            </div>
+
+            <div class="bg-blue-50 p-4 rounded-lg mb-6">
+                <h3 class="font-semibold mb-2 text-blue-900">검색 조건</h3>
+                <div class="text-sm text-blue-800 space-y-1">
+                    <div>기간: <span id="searchPeriod">-</span></div>
+                    <div>일수: <span id="searchDays">-</span>일</div>
+                </div>
+            </div>
+
+            <div class="mb-6">
+                <h3 class="font-semibold mb-3">빠른 선택</h3>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="setQuickDate(0)" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded text-sm transition-colors">오늘</button>
+                    <button onclick="setQuickDate(1)" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded text-sm transition-colors">최근 2일</button>
+                    <button onclick="setQuickDate(6)" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded text-sm transition-colors">최근 7일</button>
+                    <button onclick="setQuickDate(29)" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded text-sm transition-colors">최근 30일</button>
+                </div>
+            </div>
+
+            <div class="bg-gray-50 p-4 rounded-lg">
+                <h3 class="font-semibold mb-2">검색 결과</h3>
+                <div class="text-sm text-gray-700 space-y-2">
+                    <div class="flex justify-between">
+                        <span>총 화재:</span>
+                        <span id="resultTotal" class="font-bold">0건</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span>클러스터:</span>
+                        <span id="resultCluster" class="font-bold">0개</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span>일평균:</span>
+                        <span id="resultAvg" class="font-bold">0건/일</span>
+                    </div>
                 </div>
             </div>
         </div>
         
-        <!-- 사이드바 토글 버튼 (오른쪽 가장자리) -->
-        <button id="toggleSidebar" class="absolute right-0 top-1/2 transform translate-x-full -translate-y-1/2 bg-white shadow-lg rounded-r-lg px-2 py-8 hover:bg-gray-50 transition-colors">
-            <span id="arrowIcon" class="text-xl font-bold text-gray-600">◀</span>
+        <button id="toggleRightSidebar" class="absolute left-0 top-1/2 transform -translate-x-full -translate-y-1/2 bg-white shadow-lg rounded-l-lg px-2 py-8 hover:bg-gray-50 transition-colors">
+            <span id="rightArrowIcon" class="text-xl font-bold text-gray-600">▶</span>
         </button>
     </div>
 
-    <div id="googleMap" class="w-full h-screen"></div>
+    <!-- 메인 지도 -->
+    <div id="mapContainer" style="margin-left: 384px; margin-right: 384px; transition: all 0.3s;">
+        <div id="map"></div>
+    </div>
+
+    <!-- 상단 정보 패널 -->
+    <div class="fixed top-4 left-1/2 transform -translate-x-1/2 bg-white p-4 rounded-lg shadow-lg z-10">
+        <div class="flex items-center gap-2 mb-2">
+            <span>ℹ️</span>
+            <span class="font-semibold">실시간 모니터링</span>
+        </div>
+        <div class="text-sm text-gray-600 text-center">
+            <div>데이터 소스: FIRMS VIIRS NOAA-20</div>
+            <div>클러스터 반경: 10km</div>
+        </div>
+    </div>
 
     <script>
-    // 사이드바 제어
-    const sidebar = document.getElementById('sidebar');
-    const toggleBtn = document.getElementById('toggleSidebar');
-    const arrowIcon = document.getElementById('arrowIcon');
-
-    toggleBtn.addEventListener('click', function() {
-        const isOpen = !sidebar.classList.contains('-translate-x-full');
+        let map;
+        let allFires = [];
+        let clusters = [];
+        let clusterMarkers = [];
+        let currentInfoWindow = null;
         
-        if (isOpen) {
-            // 닫기
-            sidebar.classList.add('-translate-x-full');
-            arrowIcon.textContent = '▶';
-        } else {
-            // 열기
-            sidebar.classList.remove('-translate-x-full');
-            arrowIcon.textContent = '◀';
+        // 사이드바 토글
+        const leftSidebar = document.getElementById('leftSidebar');
+        const rightSidebar = document.getElementById('rightSidebar');
+        const mapContainer = document.getElementById('mapContainer');
+        const toggleLeft = document.getElementById('toggleLeftSidebar');
+        const toggleRight = document.getElementById('toggleRightSidebar');
+        const leftArrow = document.getElementById('leftArrowIcon');
+        const rightArrow = document.getElementById('rightArrowIcon');
+        
+        let leftOpen = true;
+        let rightOpen = true;
+        
+        toggleLeft.addEventListener('click', () => {
+            leftOpen = !leftOpen;
+            if (leftOpen) {
+                leftSidebar.classList.remove('-translate-x-full');
+                leftArrow.textContent = '◀';
+                mapContainer.style.marginLeft = '384px';
+            } else {
+                leftSidebar.classList.add('-translate-x-full');
+                leftArrow.textContent = '▶';
+                mapContainer.style.marginLeft = '0';
+            }
+        });
+        
+        toggleRight.addEventListener('click', () => {
+            rightOpen = !rightOpen;
+            if (rightOpen) {
+                rightSidebar.classList.remove('translate-x-full');
+                rightArrow.textContent = '▶';
+                mapContainer.style.marginRight = '384px';
+            } else {
+                rightSidebar.classList.add('translate-x-full');
+                rightArrow.textContent = '◀';
+                mapContainer.style.marginRight = '0';
+            }
+        });
+
+        // 구글맵 초기화
+        function initMap() {
+            map = new google.maps.Map(document.getElementById('map'), {
+                center: { lat: 36.5, lng: 127.5 },
+                zoom: 7,
+                mapTypeId: 'terrain'
+            });
+            
+            loadFireData();
         }
-    });
 
-    </script>
-    <script>
-    function myMap(){
-        var mapOptions = { 
-            center: new google.maps.LatLng(36.5, 127.5),
-            zoom: 7
-        };
-    
-        var map = new google.maps.Map( 
-            document.getElementById("googleMap"), 
-            mapOptions 
-        );
+        // 거리 계산 (km)
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
 
-        // Django API에서 데이터 가져오기
-        fetch('/api/fire-data/')
-            .then(response => response.json())
-            .then(data => {
-                console.log('데이터 로드 완료:', data.length + '개');
-                
-                data.forEach(function(fire) {
-                    // 마커 생성
-                    var marker = new google.maps.Marker({
-                        position: new google.maps.LatLng(fire.latitude, fire.longitude),
-                        map: map,
-                        icon: {
-                            path: google.maps.SymbolPath.CIRCLE,
-                            fillColor: fire.frp > 5 ? '#FF0000' : '#FF6600',
-                            fillOpacity: 0.8,
-                            strokeColor: '#8B0000',
-                            strokeWeight: 2,
-                            scale: Math.max(5, fire.frp * 2)
+        // 화재 클러스터링 (10km 이내)
+        function clusterFires(fireData) {
+            const clustered = [];
+            const processed = new Set();
+            const clusterRadius = 10; // km
+
+            fireData.forEach((fire, index) => {
+                if (processed.has(index)) return;
+
+                const cluster = {
+                    fires: [fire],
+                    centerLat: fire.latitude,
+                    centerLng: fire.longitude,
+                    maxConfidence: fire.confidence
+                };
+
+                fireData.forEach((otherFire, otherIndex) => {
+                    if (index === otherIndex || processed.has(otherIndex)) return;
+                    
+                    const distance = calculateDistance(
+                        fire.latitude, fire.longitude,
+                        otherFire.latitude, otherFire.longitude
+                    );
+
+                    if (distance <= clusterRadius) {
+                        cluster.fires.push(otherFire);
+                        processed.add(otherIndex);
+                        
+                        cluster.centerLat = cluster.fires.reduce((sum, f) => sum + f.latitude, 0) / cluster.fires.length;
+                        cluster.centerLng = cluster.fires.reduce((sum, f) => sum + f.longitude, 0) / cluster.fires.length;
+                        
+                        if (otherFire.confidence === 'h' || 
+                            (otherFire.confidence === 'n' && cluster.maxConfidence === 'l')) {
+                            cluster.maxConfidence = otherFire.confidence;
                         }
-                    });
+                    }
+                });
 
-                    // 정보창
-                    var infowindow = new google.maps.InfoWindow({
-                        content: `
-                            <div class="p-2.5 font-sans">
-                                <h3 class="m-0 mb-2.5 text-red-700">🔥 화재 감지</h3>
-                                <p class="my-1.5"><strong>위치:</strong> ${fire.latitude.toFixed(4)}, ${fire.longitude.toFixed(4)}</p>
-                                <p class="my-1.5"><strong>FRP:</strong> ${fire.frp} MW</p>
-                                <p class="my-1.5"><strong>온도:</strong> ${fire.bright_ti4}K</p>
-                                <p class="my-1.5"><strong>날짜:</strong> ${fire.acq_date}</p>
-                                <p class="my-1.5"><strong>시간:</strong> ${fire.acq_time}</p>
-                                <p class="my-1.5"><strong>위성:</strong> ${fire.satellite}</p>
-                                <p class="my-1.5"><strong>신뢰도:</strong> ${fire.confidence}</p>
-                            </div>
-                        `
-                    });
+                processed.add(index);
+                clustered.push(cluster);
+            });
 
-                    // 마커 클릭 이벤트
-                    marker.addListener('click', function() {
-                        infowindow.open(map, marker);
-                    });
+            return clustered;
+        }
+
+        // 화재 데이터 로드
+        function loadFireData() {
+            const refreshBtn = document.getElementById('refreshBtn');
+            const refreshIcon = document.getElementById('refreshIcon');
+            const refreshText = document.getElementById('refreshText');
+            
+            refreshBtn.disabled = true;
+            refreshIcon.textContent = '⏳';
+            refreshText.textContent = '로딩 중...';
+            
+            clearMarkers();
+            
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            
+            let url = '/api/fire-data/';
+            if (startDate && endDate) {
+                url += `?start_date=${startDate}&end_date=${endDate}`;
+            }
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    console.log('화재 데이터 로드:', data.length + '개');
+                    
+                    allFires = data;
+                    clusters = clusterFires(data);
+                    
+                    displayClusters();
+                    updateStatistics(data, clusters);
+                    updateClusterList(clusters);
+                    updateSearchResults(data, clusters, startDate, endDate);
+                    
+                    document.getElementById('updateTime').textContent = 
+                        `마지막 업데이트: ${new Date().toLocaleTimeString('ko-KR')}`;
+                    document.getElementById('lastUpdate').classList.remove('hidden');
+                    
+                    refreshBtn.disabled = false;
+                    refreshIcon.textContent = '🔄';
+                    refreshText.textContent = '데이터 새로고침';
+                })
+                .catch(error => {
+                    console.error('데이터 로드 실패:', error);
+                    alert('화재 데이터를 불러오는데 실패했습니다.');
+                    
+                    refreshBtn.disabled = false;
+                    refreshIcon.textContent = '🔄';
+                    refreshText.textContent = '데이터 새로고침';
+                });
+        }
+
+        // 기존 마커 제거
+        function clearMarkers() {
+            clusterMarkers.forEach(marker => marker.setMap(null));
+            clusterMarkers = [];
+            if (currentInfoWindow) {
+                currentInfoWindow.close();
+                currentInfoWindow = null;
+            }
+        }
+
+        // 클러스터 표시
+        function displayClusters() {
+            clusters.forEach((cluster, index) => {
+                const fillColor = 
+                    cluster.maxConfidence === 'h' ? '#FF0000' :
+                    cluster.maxConfidence === 'n' ? '#FF6B00' : '#FFD700';
+                
+                const clusterSize = Math.max(30, Math.min(cluster.fires.length * 8, 50));
+                
+                const marker = new google.maps.Marker({
+                    position: { lat: cluster.centerLat, lng: cluster.centerLng },
+                    map: map,
+                    icon: {
+                        path: google.maps.SymbolPath.CIRCLE,
+                        fillColor: fillColor,
+                        fillOpacity: 0.9,
+                        strokeColor: '#FFFFFF',
+                        strokeWeight: 3,
+                        scale: clusterSize
+                    },
+                    label: {
+                        text: cluster.fires.length.toString(),
+                        color: '#FFFFFF',
+                        fontSize: '14px',
+                        fontWeight: 'bold'
+                    },
+                    title: `클러스터 #${index + 1} - ${cluster.fires.length}건`,
+                    zIndex: cluster.maxConfidence === 'h' ? 1000 : 100
                 });
                 
-                // 화재 건수 업데이트
-                document.getElementById('fireCount').textContent = data.length;
-            })
-            .catch(error => {
-                console.error('Error loading fire data:', error);
-                alert('데이터를 불러오는데 실패했습니다.');
+                const infoWindow = new google.maps.InfoWindow({
+                    content: createClusterInfoContent(cluster, index)
+                });
+                
+                marker.addListener('click', () => {
+                    if (currentInfoWindow) {
+                        currentInfoWindow.close();
+                    }
+                    infoWindow.open(map, marker);
+                    currentInfoWindow = infoWindow;
+                    map.setCenter(marker.getPosition());
+                    map.setZoom(10);
+                });
+                
+                clusterMarkers.push(marker);
             });
-    }
-    </script> 
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDMgR74mjlB4MutK1-jqO8gthz-T45jtXg&callback=myMap"></script>
+        }
+
+        // 클러스터 정보창 HTML 생성
+        function createClusterInfoContent(cluster, index) {
+            const confidenceText = c => c === 'h' ? '높음' : c === 'n' ? '보통' : '낮음';
+            const confidenceColor = c => c === 'h' ? 'bg-red-500' : c === 'n' ? 'bg-orange-500' : 'bg-yellow-500';
+            
+            let tableRows = '';
+            cluster.fires.forEach((fire, fIndex) => {
+                tableRows += `
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-2 py-2 border">${fIndex + 1}</td>
+                        <td class="px-2 py-2 border">${fire.acq_date}</td>
+                        <td class="px-2 py-2 border">${fire.acq_time}</td>
+                        <td class="px-2 py-2 border text-right font-semibold">${fire.frp}</td>
+                        <td class="px-2 py-2 border text-right">${fire.bright_ti4}K</td>
+                        <td class="px-2 py-2 border text-center">
+                            <span class="px-2 py-1 rounded text-white text-xs font-semibold ${confidenceColor(fire.confidence)}">
+                                ${confidenceText(fire.confidence)}
+                            </span>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            const avgFrp = (cluster.fires.reduce((sum, f) => sum + f.frp, 0) / cluster.fires.length).toFixed(1);
+            const maxFrp = Math.max(...cluster.fires.map(f => f.frp)).toFixed(1);
+            const avgTemp = (cluster.fires.reduce((sum, f) => sum + f.bright_ti4, 0) / cluster.fires.length).toFixed(1);
+            const satellites = [...new Set(cluster.fires.map(f => f.satellite))].join(', ');
+            
+            return `
+                <div style="max-width: 500px; font-family: sans-serif;">
+                    <h4 style="font-weight: bold; font-size: 1.125rem; margin-bottom: 0.75rem; padding-bottom: 0.5rem; border-bottom: 2px solid #e5e7eb;">
+                        🔥 클러스터 #${index + 1} - ${cluster.fires.length}건의 화재
+                    </h4>
+                    
+                    <div style="max-height: 300px; overflow-y: auto; margin-bottom: 0.75rem;">
+                        <table style="width: 100%; font-size: 0.75rem; border-collapse: collapse;">
+                            <thead style="background: #f3f4f6; position: sticky; top: 0;">
+                                <tr>
+                                    <th class="px-2 py-2 border">번호</th>
+                                    <th class="px-2 py-2 border">날짜</th>
+                                    <th class="px-2 py-2 border">시간</th>
+                                    <th class="px-2 py-2 border">FRP</th>
+                                    <th class="px-2 py-2 border">온도</th>
+                                    <th class="px-2 py-2 border">신뢰도</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${tableRows}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; font-size: 0.75rem;">
+                        <div style="background: #dbeafe; padding: 0.5rem; border-radius: 0.25rem;">
+                            <div style="color: #1e40af;">평균 FRP</div>
+                            <div style="font-weight: bold; color: #1e3a8a;">${avgFrp} MW</div>
+                        </div>
+                        <div style="background: #dcfce7; padding: 0.5rem; border-radius: 0.25rem;">
+                            <div style="color: #15803d;">최대 FRP</div>
+                            <div style="font-weight: bold; color: #14532d;">${maxFrp} MW</div>
+                        </div>
+                        <div style="background: #f3e8ff; padding: 0.5rem; border-radius: 0.25rem;">
+                            <div style="color: #7c3aed;">평균 온도</div>
+                            <div style="font-weight: bold; color: #5b21b6;">${avgTemp}K</div>
+                        </div>
+                        <div style="background: #fed7aa; padding: 0.5rem; border-radius: 0.25rem;">
+                            <div style="color: #c2410c;">위성</div>
+                            <div style="font-weight: bold; color: #7c2d12;">${satellites}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // 통계 업데이트
+        function updateStatistics(fires, clusters) {
+            const high = fires.filter(f => f.confidence === 'h').length;
+            const nominal = fires.filter(f => f.confidence === 'n').length;
+            const low = fires.filter(f => f.confidence === 'l').length;
+            
+            document.getElementById('totalCount').textContent = fires.length;
+            document.getElementById('clusterCount').textContent = clusters.length;
+            document.getElementById('highCount').textContent = high;
+            document.getElementById('nominalCount').textContent = nominal;
+            document.getElementById('lowCount').textContent = low;
+        }
+
+        // 클러스터 목록 업데이트
+        function updateClusterList(clusters) {
+            const clusterList = document.getElementById('clusterList');
+            const clusterListCount = document.getElementById('clusterListCount');
+            
+            clusterListCount.textContent = clusters.length;
+            
+            if (clusters.length === 0) {
+                clusterList.innerHTML = '<p class="text-gray-500 text-sm">감지된 클러스터가 없습니다.</p>';
+                return;
+            }
+            
+            clusterList.innerHTML = clusters.map((cluster, index) => {
+                const bgColor = 
+                    cluster.maxConfidence === 'h' ? 'bg-red-500' :
+                    cluster.maxConfidence === 'n' ? 'bg-orange-500' : 'bg-yellow-500';
+                
+                const avgFrp = (cluster.fires.reduce((sum, f) => sum + f.frp, 0) / cluster.fires.length).toFixed(1);
+                
+                return `
+                    <div 
+                        class="p-3 border border-gray-200 rounded-lg cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all"
+                        onclick="focusOnCluster(${index})"
+                    >
+                        <div class="flex items-start justify-between mb-2">
+                            <div class="flex items-center gap-2">
+                                <div class="w-3 h-3 rounded-full ${bgColor}"></div>
+                                <span class="font-semibold text-sm">클러스터 #${index + 1}</span>
+                            </div>
+                            <span class="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">
+                                ${cluster.fires.length}건
+                            </span>
+                        </div>
+                        <div class="text-xs text-gray-600 space-y-1">
+                            <div>중심: ${cluster.centerLat.toFixed(4)}, ${cluster.centerLng.toFixed(4)}</div>
+                            <div>평균 FRP: ${avgFrp} MW</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // 검색 결과 업데이트
+        function updateSearchResults(fires, clusters, startDate, endDate) {
+            const days = Math.ceil((new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24)) + 1;
+            const avgPerDay = fires.length > 0 ? (fires.length / days).toFixed(1) : 0;
+            
+document.getElementById('searchPeriod').textContent = `${startDate} ~ ${endDate}`;
+            document.getElementById('searchDays').textContent = days;
+            document.getElementById('resultTotal').textContent = `${fires.length}건`;
+            document.getElementById('resultCluster').textContent = `${clusters.length}개`;
+            document.getElementById('resultAvg').textContent = `${avgPerDay}건/일`;
+        }
+
+        // 클러스터로 포커스
+        function focusOnCluster(index) {
+            if (clusterMarkers[index]) {
+                map.setCenter(clusterMarkers[index].getPosition());
+                map.setZoom(10);
+                
+                if (currentInfoWindow) {
+                    currentInfoWindow.close();
+                }
+                
+                google.maps.event.trigger(clusterMarkers[index], 'click');
+            }
+        }
+
+        // 날짜 검색
+        function handleDateSearch() {
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            
+            if (!startDate || !endDate) {
+                alert('시작 날짜와 종료 날짜를 모두 입력해주세요.');
+                return;
+            }
+            
+            if (startDate > endDate) {
+                alert('시작 날짜가 종료 날짜보다 늦을 수 없습니다.');
+                return;
+            }
+            
+            loadFireData();
+        }
+
+        // 빠른 날짜 선택
+        function setQuickDate(daysAgo) {
+            const today = new Date();
+            const startDate = new Date(today);
+            startDate.setDate(startDate.getDate() - daysAgo);
+            
+            document.getElementById('startDate').value = startDate.toISOString().split('T')[0];
+            document.getElementById('endDate').value = today.toISOString().split('T')[0];
+            
+            handleDateSearch();
+        }
+
+        // 초기 날짜 설정
+        window.onload = function() {
+            const today = new Date();
+            document.getElementById('endDate').value = today.toISOString().split('T')[0];
+        };
+    </script>
+    
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDMgR74mjlB4MutK1-jqO8gthz-T45jtXg&callback=initMap" async defer></script>
 </body>
 </html>
