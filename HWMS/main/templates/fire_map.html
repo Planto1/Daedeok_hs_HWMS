@@ -7,10 +7,17 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         #map { width: 100%; height: 100vh; }
+        .fade-out {
+            animation: fadeOut 1s ease-in-out forwards;
+        }
+        @keyframes fadeOut {
+            0% { opacity: 1; }
+            100% { opacity: 0; visibility: hidden; }
+        }
     </style>
 </head>
 <body class="m-0 p-0 font-sans overflow-hidden">
-    <!-- 왼쪽 사이드바 - 통계 -->
+    <!-- 왼쪽 사이드바 - 통계 (이전과 동일) -->
     <div id="leftSidebar" class="fixed left-0 top-0 h-full w-96 bg-white shadow-xl transform transition-transform duration-300 z-20 overflow-y-auto">
         <div class="p-6">
             <div class="flex items-center gap-3 mb-6">
@@ -107,8 +114,18 @@
                 </div>
 
                 <button onclick="handleDateSearch()" class="w-full flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 text-white px-4 py-3 rounded-lg transition-colors">
-                    <span>🔍</span> 검색
+                    <span>🔍</span> DB에서 검색
                 </button>
+                
+                <!-- 새로운 기능: FIRMS에서 데이터 가져오기 -->
+                <button onclick="fetchAndSaveData()" id="fetchBtn" class="w-full flex items-center justify-center gap-2 bg-purple-500 hover:bg-purple-600 disabled:bg-gray-400 text-white px-4 py-3 rounded-lg transition-colors">
+                    <span id="fetchIcon">📥</span>
+                    <span id="fetchText">FIRMS에서 가져오기</span>
+                </button>
+                
+                <div class="text-xs text-gray-500 bg-yellow-50 p-3 rounded">
+                    💡 DB에 없는 날짜는 "FIRMS에서 가져오기"를 클릭하여 데이터를 먼저 가져와주세요.
+                </div>
             </div>
 
             <div class="bg-blue-50 p-4 rounded-lg mb-6">
@@ -158,8 +175,8 @@
         <div id="map"></div>
     </div>
 
-    <!-- 상단 정보 패널 -->
-    <div class="fixed top-4 left-1/2 transform -translate-x-1/2 bg-white p-4 rounded-lg shadow-lg z-10">
+    <!-- 상단 정보 패널 (10초 후 자동 숨김) -->
+    <div id="infoPanel" class="fixed top-4 left-1/2 transform -translate-x-1/2 bg-white p-4 rounded-lg shadow-lg z-10">
         <div class="flex items-center gap-2 mb-2">
             <span>ℹ️</span>
             <span class="font-semibold">실시간 모니터링</span>
@@ -167,6 +184,7 @@
         <div class="text-sm text-gray-600 text-center">
             <div>데이터 소스: FIRMS VIIRS NOAA-20</div>
             <div>클러스터 반경: 10km</div>
+            <div class="text-xs text-gray-400 mt-1">이 메시지는 10초 후 사라집니다</div>
         </div>
     </div>
 
@@ -176,8 +194,9 @@
         let clusters = [];
         let clusterMarkers = [];
         let currentInfoWindow = null;
+        let infoPanelTimeout = null;
         
-        // 사이드바 토글
+        // 사이드바 토글 (이전과 동일)
         const leftSidebar = document.getElementById('leftSidebar');
         const rightSidebar = document.getElementById('rightSidebar');
         const mapContainer = document.getElementById('mapContainer');
@@ -215,6 +234,21 @@
             }
         });
 
+        // 정보 패널 자동 숨김 함수
+        function hideInfoPanelAfterDelay() {
+            const infoPanel = document.getElementById('infoPanel');
+            
+            // 기존 타이머 클리어
+            if (infoPanelTimeout) {
+                clearTimeout(infoPanelTimeout);
+            }
+            
+            // 10초 후 사라지도록 설정
+            infoPanelTimeout = setTimeout(() => {
+                infoPanel.classList.add('fade-out');
+            }, 10000);
+        }
+
         // 구글맵 초기화
         function initMap() {
             map = new google.maps.Map(document.getElementById('map'), {
@@ -224,9 +258,10 @@
             });
             
             loadFireData();
+            hideInfoPanelAfterDelay();  // 페이지 로드 시 타이머 시작
         }
 
-        // 거리 계산 (km)
+        // 거리 계산 (km) - 이전과 동일
         function calculateDistance(lat1, lon1, lat2, lon2) {
             const R = 6371;
             const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -238,11 +273,11 @@
             return R * c;
         }
 
-        // 화재 클러스터링 (10km 이내)
+        // 화재 클러스터링 (10km 이내) - 이전과 동일
         function clusterFires(fireData) {
             const clustered = [];
             const processed = new Set();
-            const clusterRadius = 10; // km
+            const clusterRadius = 10;
 
             fireData.forEach((fire, index) => {
                 if (processed.has(index)) return;
@@ -283,7 +318,7 @@
             return clustered;
         }
 
-        // 화재 데이터 로드
+        // 화재 데이터 로드 (DB에서)
         function loadFireData() {
             const refreshBtn = document.getElementById('refreshBtn');
             const refreshIcon = document.getElementById('refreshIcon');
@@ -323,6 +358,13 @@
                     refreshBtn.disabled = false;
                     refreshIcon.textContent = '🔄';
                     refreshText.textContent = '데이터 새로고침';
+                    
+                    // 정보 패널 다시 표시하고 10초 후 숨김
+                    const infoPanel = document.getElementById('infoPanel');
+                    infoPanel.classList.remove('fade-out');
+                    infoPanel.style.opacity = '1';
+                    infoPanel.style.visibility = 'visible';
+                    hideInfoPanelAfterDelay();
                 })
                 .catch(error => {
                     console.error('데이터 로드 실패:', error);
@@ -332,6 +374,123 @@
                     refreshIcon.textContent = '🔄';
                     refreshText.textContent = '데이터 새로고침';
                 });
+        }
+
+        // FIRMS API에서 데이터 가져와서 DB에 저장
+        // FIRMS API에서 데이터 가져와서 DB에 저장 (개선 버전)
+        function fetchAndSaveData() {
+            const fetchBtn = document.getElementById('fetchBtn');
+            const fetchIcon = document.getElementById('fetchIcon');
+            const fetchText = document.getElementById('fetchText');
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            
+            console.log('=== fetchAndSaveData 시작 ===');
+            console.log('시작 날짜:', startDate);
+            console.log('종료 날짜:', endDate);
+            
+            if (!startDate || !endDate) {
+                alert('시작 날짜와 종료 날짜를 모두 입력해주세요.');
+                return;
+            }
+            
+            if (startDate > endDate) {
+                alert('시작 날짜가 종료 날짜보다 늦을 수 없습니다.');
+                return;
+            }
+            
+            const daysDiff = Math.ceil((new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24)) + 1;
+            
+            if (daysDiff > 30) {
+                alert('최대 30일까지만 조회 가능합니다.');
+                return;
+            }
+            
+            if (!confirm(`${startDate} ~ ${endDate} (${daysDiff}일)의 데이터를 FIRMS API에서 가져와 DB에 저장하시겠습니까?\n\n시간이 다소 걸릴 수 있습니다.`)) {
+                return;
+            }
+            
+            fetchBtn.disabled = true;
+            fetchIcon.textContent = '⏳';
+            fetchText.textContent = '가져오는 중...';
+            
+            const requestData = {
+                start_date: startDate,
+                end_date: endDate
+            };
+            
+            console.log('요청 데이터:', requestData);
+            console.log('요청 URL:', '/api/fetch-save/');
+            
+            fetch('/api/fetch-save/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(requestData)
+            })
+            .then(response => {
+                console.log('응답 상태:', response.status, response.statusText);
+                
+                // 응답을 텍스트로 먼저 읽기
+                return response.text().then(text => {
+                    console.log('응답 본문 (raw):', text);
+                    
+                    try {
+                        const data = JSON.parse(text);
+                        if (!response.ok) {
+                            throw new Error(data.message || `서버 오류 (${response.status})`);
+                        }
+                        return data;
+                    } catch (e) {
+                        console.error('JSON 파싱 오류:', e);
+                        console.error('응답 내용:', text);
+                        throw new Error(`응답 파싱 실패: ${e.message}`);
+                    }
+                });
+            })
+            .then(data => {
+                console.log('성공 응답:', data);
+                
+                if (data.status === 'success') {
+                    alert(`✅ 성공!\n\n${data.message}\n기간: ${data.start_date} ~ ${data.end_date}`);
+                    loadFireData();
+                } else {
+                    alert(`❌ 실패\n\n${data.message}`);
+                }
+                
+                fetchBtn.disabled = false;
+                fetchIcon.textContent = '📥';
+                fetchText.textContent = 'FIRMS에서 가져오기';
+            })
+            .catch(error => {
+                console.error('=== 오류 발생 ===');
+                console.error('오류 타입:', error.name);
+                console.error('오류 메시지:', error.message);
+                console.error('오류 스택:', error.stack);
+                
+                alert(`❌ 데이터를 가져오는데 실패했습니다.\n\n${error.message}\n\n자세한 내용은 콘솔을 확인해주세요.`);
+                
+                fetchBtn.disabled = false;
+                fetchIcon.textContent = '📥';
+                fetchText.textContent = 'FIRMS에서 가져오기';
+            });
+        }
+
+        // CSRF 토큰 가져오기
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
         }
 
         // 기존 마커 제거
@@ -526,7 +685,7 @@
             const days = Math.ceil((new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24)) + 1;
             const avgPerDay = fires.length > 0 ? (fires.length / days).toFixed(1) : 0;
             
-document.getElementById('searchPeriod').textContent = `${startDate} ~ ${endDate}`;
+            document.getElementById('searchPeriod').textContent = `${startDate} ~ ${endDate}`;
             document.getElementById('searchDays').textContent = days;
             document.getElementById('resultTotal').textContent = `${fires.length}건`;
             document.getElementById('resultCluster').textContent = `${clusters.length}개`;
@@ -547,7 +706,7 @@ document.getElementById('searchPeriod').textContent = `${startDate} ~ ${endDate}
             }
         }
 
-        // 날짜 검색
+        // 날짜 검색 (DB에서)
         function handleDateSearch() {
             const startDate = document.getElementById('startDate').value;
             const endDate = document.getElementById('endDate').value;
