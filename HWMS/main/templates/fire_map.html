@@ -3,42 +3,50 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>한국 화재 모니터링 시스템</title>
+    <title>한국 산불 모니터링 시스템</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         #map { width: 100%; height: 100vh; }
-        .fade-out {
-            animation: fadeOut 1s ease-in-out forwards;
-        }
-        @keyframes fadeOut {
-            0% { opacity: 1; }
-            100% { opacity: 0; visibility: hidden; }
-        }
     </style>
 </head>
 <body class="m-0 p-0 font-sans overflow-hidden">
-    <!-- 왼쪽 사이드바 - 통계 (이전과 동일) -->
+    <!-- 왼쪽 사이드바 - 개요 및 클러스터 -->
     <div id="leftSidebar" class="fixed left-0 top-0 h-full w-96 bg-white shadow-xl transform transition-transform duration-300 z-20 overflow-y-auto">
         <div class="p-6">
-            <div class="flex items-center gap-3 mb-6">
-                <span class="text-3xl">🔥</span>
-                <h1 class="text-2xl font-bold text-gray-800">화재 통계</h1>
+            <!-- 프로그램 개요 -->
+            <div class="mb-6">
+                <h1 class="text-2xl font-bold text-gray-800 mb-4">산불 모니터링 시스템</h1>
+                <div class="bg-blue-50 p-4 rounded-lg space-y-2 text-sm">
+                    <div class="font-semibold text-blue-900">시스템 개요</div>
+                    <div class="text-gray-700">NASA FIRMS API를 활용한 한국 지역 산불 감지 및 모니터링 시스템입니다.</div>
+                    <div class="text-gray-600 text-xs mt-2">
+                        <div>• 데이터 출처: FIRMS (Fire Information for Resource Management System)</div>
+                        <div>• 위성: VIIRS NOAA-20, VIIRS SNPP, MODIS</div>
+                        <div>• 클러스터링: 10km 반경 기준</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 현재 시각 -->
+            <div class="mb-6">
+                <div class="bg-gray-50 p-4 rounded-lg">
+                    <div class="text-sm text-gray-600 mb-1">현재 시각</div>
+                    <div id="currentTime" class="text-2xl font-bold text-gray-800">--:--:--</div>
+                    <div id="currentDate" class="text-sm text-gray-600 mt-1">---- . --. --</div>
+                </div>
             </div>
 
             <button onclick="loadFireData()" id="refreshBtn" class="w-full flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white px-4 py-3 rounded-lg transition-colors mb-4">
-                <span id="refreshIcon">🔄</span>
                 <span id="refreshText">데이터 새로고침</span>
             </button>
 
             <div id="lastUpdate" class="hidden flex items-center gap-2 text-sm text-gray-600 mb-6 bg-gray-50 p-3 rounded-lg">
-                <span>🕐</span>
                 <span id="updateTime"></span>
             </div>
 
+            <!-- 화재 통계 -->
             <div class="mb-6">
-                <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
-                    <span>📊</span> 화재 통계
-                </h2>
+                <h2 class="text-lg font-semibold mb-3">화재 통계</h2>
                 <div class="space-y-3">
                     <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                         <span class="text-gray-700">총 감지</span>
@@ -81,10 +89,19 @@
                 </div>
             </div>
 
+            <!-- 클러스터 목록 -->
             <div>
-                <h3 class="font-semibold mb-3 flex items-center gap-2">
-                    <span>📍</span> 화재 클러스터 (<span id="clusterListCount">0</span>)
-                </h3>
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="font-semibold">화재 클러스터 (<span id="clusterListCount">0</span>)</h3>
+                    <select id="clusterSort" onchange="sortAndDisplayClusters()" class="text-sm border border-gray-300 rounded px-2 py-1">
+                        <option value="count_desc">건수 많은 순</option>
+                        <option value="count_asc">건수 적은 순</option>
+                        <option value="confidence">신뢰도 높은 순</option>
+                        <option value="frp_desc">FRP 높은 순</option>
+                        <option value="frp_asc">FRP 낮은 순</option>
+                        <option value="recent">최신 순</option>
+                    </select>
+                </div>
                 <div id="clusterList" class="space-y-2 max-h-96 overflow-y-auto"></div>
             </div>
         </div>
@@ -97,8 +114,7 @@
     <!-- 오른쪽 사이드바 - 날짜 검색 -->
     <div id="rightSidebar" class="fixed right-0 top-0 h-full w-96 bg-white shadow-xl transform transition-transform duration-300 z-20 overflow-y-auto">
         <div class="p-6">
-            <div class="flex items-center gap-3 mb-6">
-                <span class="text-3xl">📅</span>
+            <div class="mb-6">
                 <h1 class="text-2xl font-bold text-gray-800">기간 검색</h1>
             </div>
 
@@ -113,18 +129,26 @@
                     <input type="date" id="endDate" value="2025-12-19" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
                 </div>
 
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">위성 선택</label>
+                    <select id="satelliteSelect" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <option value="VIIRS_NOAA20_NRT">VIIRS NOAA-20</option>
+                        <option value="VIIRS_SNPP_NRT">VIIRS SNPP</option>
+                        <option value="MODIS_NRT">MODIS (Terra/Aqua)</option>
+                    </select>
+                    <p class="text-xs text-gray-500 mt-1">위성 센서 유형을 선택하세요</p>
+                </div>
+
                 <button onclick="handleDateSearch()" class="w-full flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 text-white px-4 py-3 rounded-lg transition-colors">
-                    <span>🔍</span> DB에서 검색
+                    DB에서 검색
                 </button>
                 
-                <!-- 새로운 기능: FIRMS에서 데이터 가져오기 -->
                 <button onclick="fetchAndSaveData()" id="fetchBtn" class="w-full flex items-center justify-center gap-2 bg-purple-500 hover:bg-purple-600 disabled:bg-gray-400 text-white px-4 py-3 rounded-lg transition-colors">
-                    <span id="fetchIcon">📥</span>
                     <span id="fetchText">FIRMS에서 가져오기</span>
                 </button>
                 
                 <div class="text-xs text-gray-500 bg-yellow-50 p-3 rounded">
-                    💡 DB에 없는 날짜는 "FIRMS에서 가져오기"를 클릭하여 데이터를 먼저 가져와주세요.
+                    DB에 없는 날짜는 "FIRMS에서 가져오기"를 클릭하여 데이터를 먼저 가져와주세요.
                 </div>
             </div>
 
@@ -133,16 +157,17 @@
                 <div class="text-sm text-blue-800 space-y-1">
                     <div>기간: <span id="searchPeriod">-</span></div>
                     <div>일수: <span id="searchDays">-</span>일</div>
+                    <div>위성: <span id="searchSatellite">VIIRS NOAA-20</span></div>
                 </div>
             </div>
 
             <div class="mb-6">
-                <h3 class="font-semibold mb-3">빠른 선택</h3>
+                <h3 class="font-semibold mb-3">빠른 선택 (최대 10일)</h3>
                 <div class="grid grid-cols-2 gap-2">
                     <button onclick="setQuickDate(0)" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded text-sm transition-colors">오늘</button>
-                    <button onclick="setQuickDate(1)" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded text-sm transition-colors">최근 2일</button>
-                    <button onclick="setQuickDate(6)" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded text-sm transition-colors">최근 7일</button>
-                    <button onclick="setQuickDate(29)" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded text-sm transition-colors">최근 30일</button>
+                    <button onclick="setQuickDate(2)" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded text-sm transition-colors">최근 3일</button>
+                    <button onclick="setQuickDate(4)" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded text-sm transition-colors">최근 5일</button>
+                    <button onclick="setQuickDate(9)" class="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded text-sm transition-colors">최근 10일</button>
                 </div>
             </div>
 
@@ -175,28 +200,36 @@
         <div id="map"></div>
     </div>
 
-    <!-- 상단 정보 패널 (10초 후 자동 숨김) -->
-    <div id="infoPanel" class="fixed top-4 left-1/2 transform -translate-x-1/2 bg-white p-4 rounded-lg shadow-lg z-10">
-        <div class="flex items-center gap-2 mb-2">
-            <span>ℹ️</span>
-            <span class="font-semibold">실시간 모니터링</span>
-        </div>
-        <div class="text-sm text-gray-600 text-center">
-            <div>데이터 소스: FIRMS VIIRS NOAA-20</div>
-            <div>클러스터 반경: 10km</div>
-            <div class="text-xs text-gray-400 mt-1">이 메시지는 10초 후 사라집니다</div>
-        </div>
-    </div>
-
     <script>
         let map;
         let allFires = [];
         let clusters = [];
         let clusterMarkers = [];
         let currentInfoWindow = null;
-        let infoPanelTimeout = null;
         
-        // 사이드바 토글 (이전과 동일)
+        // 현재 시각 업데이트
+        function updateCurrentTime() {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('ko-KR', { 
+                hour: '2-digit', 
+                minute: '2-digit', 
+                second: '2-digit' 
+            });
+            const dateStr = now.toLocaleDateString('ko-KR', { 
+                year: 'numeric', 
+                month: '2-digit', 
+                day: '2-digit' 
+            });
+            
+            document.getElementById('currentTime').textContent = timeStr;
+            document.getElementById('currentDate').textContent = dateStr;
+        }
+        
+        // 1초마다 시각 업데이트
+        setInterval(updateCurrentTime, 1000);
+        updateCurrentTime();
+        
+        // 사이드바 토글
         const leftSidebar = document.getElementById('leftSidebar');
         const rightSidebar = document.getElementById('rightSidebar');
         const mapContainer = document.getElementById('mapContainer');
@@ -234,19 +267,17 @@
             }
         });
 
-        // 정보 패널 자동 숨김 함수
-        function hideInfoPanelAfterDelay() {
-            const infoPanel = document.getElementById('infoPanel');
+        // 날짜 차이 검증 함수
+        function validateDateRange(startDate, endDate) {
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+            const diffDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
             
-            // 기존 타이머 클리어
-            if (infoPanelTimeout) {
-                clearTimeout(infoPanelTimeout);
+            if (diffDays > 9) {
+                alert('최대 10일까지만 검색 가능합니다.');
+                return false;
             }
-            
-            // 10초 후 사라지도록 설정
-            infoPanelTimeout = setTimeout(() => {
-                infoPanel.classList.add('fade-out');
-            }, 10000);
+            return true;
         }
 
         // 구글맵 초기화
@@ -258,10 +289,9 @@
             });
             
             loadFireData();
-            hideInfoPanelAfterDelay();  // 페이지 로드 시 타이머 시작
         }
 
-        // 거리 계산 (km) - 이전과 동일
+        // 거리 계산 (km)
         function calculateDistance(lat1, lon1, lat2, lon2) {
             const R = 6371;
             const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -273,7 +303,7 @@
             return R * c;
         }
 
-        // 화재 클러스터링 (10km 이내) - 이전과 동일
+        // 화재 클러스터링 (10km 이내)
         function clusterFires(fireData) {
             const clustered = [];
             const processed = new Set();
@@ -318,20 +348,78 @@
             return clustered;
         }
 
+        // 클러스터 정렬
+        function sortClusters(clusters, sortType) {
+            const sorted = [...clusters];
+            
+            switch(sortType) {
+                case 'count_desc':
+                    sorted.sort((a, b) => b.fires.length - a.fires.length);
+                    break;
+                case 'count_asc':
+                    sorted.sort((a, b) => a.fires.length - b.fires.length);
+                    break;
+                case 'confidence':
+                    const confidenceOrder = { 'h': 3, 'n': 2, 'l': 1 };
+                    sorted.sort((a, b) => confidenceOrder[b.maxConfidence] - confidenceOrder[a.maxConfidence]);
+                    break;
+                case 'frp_desc':
+                    sorted.sort((a, b) => {
+                        const avgFrpA = a.fires.reduce((sum, f) => sum + f.frp, 0) / a.fires.length;
+                        const avgFrpB = b.fires.reduce((sum, f) => sum + f.frp, 0) / b.fires.length;
+                        return avgFrpB - avgFrpA;
+                    });
+                    break;
+                case 'frp_asc':
+                    sorted.sort((a, b) => {
+                        const avgFrpA = a.fires.reduce((sum, f) => sum + f.frp, 0) / a.fires.length;
+                        const avgFrpB = b.fires.reduce((sum, f) => sum + f.frp, 0) / b.fires.length;
+                        return avgFrpA - avgFrpB;
+                    });
+                    break;
+                case 'recent':
+                    sorted.sort((a, b) => {
+                        const latestA = a.fires.reduce((latest, f) => {
+                            const date = new Date(f.acq_date + 'T' + f.acq_time.padStart(4, '0').slice(0, 2) + ':' + f.acq_time.padStart(4, '0').slice(2, 4));
+                            return date > latest ? date : latest;
+                        }, new Date(0));
+                        const latestB = b.fires.reduce((latest, f) => {
+                            const date = new Date(f.acq_date + 'T' + f.acq_time.padStart(4, '0').slice(0, 2) + ':' + f.acq_time.padStart(4, '0').slice(2, 4));
+                            return date > latest ? date : latest;
+                        }, new Date(0));
+                        return latestB - latestA;
+                    });
+                    break;
+            }
+            
+            return sorted;
+        }
+
+        // 정렬 후 클러스터 목록 다시 표시
+        function sortAndDisplayClusters() {
+            const sortType = document.getElementById('clusterSort').value;
+            const sorted = sortClusters(clusters, sortType);
+            updateClusterList(sorted);
+        }
+
         // 화재 데이터 로드 (DB에서)
         function loadFireData() {
             const refreshBtn = document.getElementById('refreshBtn');
-            const refreshIcon = document.getElementById('refreshIcon');
             const refreshText = document.getElementById('refreshText');
             
             refreshBtn.disabled = true;
-            refreshIcon.textContent = '⏳';
             refreshText.textContent = '로딩 중...';
             
             clearMarkers();
             
             const startDate = document.getElementById('startDate').value;
             const endDate = document.getElementById('endDate').value;
+            
+            if (!validateDateRange(startDate, endDate)) {
+                refreshBtn.disabled = false;
+                refreshText.textContent = '데이터 새로고침';
+                return;
+            }
             
             let url = '/api/fire-data/';
             if (startDate && endDate) {
@@ -348,7 +436,7 @@
                     
                     displayClusters();
                     updateStatistics(data, clusters);
-                    updateClusterList(clusters);
+                    sortAndDisplayClusters();
                     updateSearchResults(data, clusters, startDate, endDate);
                     
                     document.getElementById('updateTime').textContent = 
@@ -356,38 +444,24 @@
                     document.getElementById('lastUpdate').classList.remove('hidden');
                     
                     refreshBtn.disabled = false;
-                    refreshIcon.textContent = '🔄';
                     refreshText.textContent = '데이터 새로고침';
-                    
-                    // 정보 패널 다시 표시하고 10초 후 숨김
-                    const infoPanel = document.getElementById('infoPanel');
-                    infoPanel.classList.remove('fade-out');
-                    infoPanel.style.opacity = '1';
-                    infoPanel.style.visibility = 'visible';
-                    hideInfoPanelAfterDelay();
                 })
                 .catch(error => {
                     console.error('데이터 로드 실패:', error);
                     alert('화재 데이터를 불러오는데 실패했습니다.');
                     
                     refreshBtn.disabled = false;
-                    refreshIcon.textContent = '🔄';
                     refreshText.textContent = '데이터 새로고침';
                 });
         }
 
         // FIRMS API에서 데이터 가져와서 DB에 저장
-        // FIRMS API에서 데이터 가져와서 DB에 저장 (개선 버전)
         function fetchAndSaveData() {
             const fetchBtn = document.getElementById('fetchBtn');
-            const fetchIcon = document.getElementById('fetchIcon');
             const fetchText = document.getElementById('fetchText');
             const startDate = document.getElementById('startDate').value;
             const endDate = document.getElementById('endDate').value;
-            
-            console.log('=== fetchAndSaveData 시작 ===');
-            console.log('시작 날짜:', startDate);
-            console.log('종료 날짜:', endDate);
+            const satellite = document.getElementById('satelliteSelect').value;
             
             if (!startDate || !endDate) {
                 alert('시작 날짜와 종료 날짜를 모두 입력해주세요.');
@@ -399,28 +473,30 @@
                 return;
             }
             
-            const daysDiff = Math.ceil((new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24)) + 1;
-            
-            if (daysDiff > 30) {
-                alert('최대 30일까지만 조회 가능합니다.');
+            if (!validateDateRange(startDate, endDate)) {
                 return;
             }
             
-            if (!confirm(`${startDate} ~ ${endDate} (${daysDiff}일)의 데이터를 FIRMS API에서 가져와 DB에 저장하시겠습니까?\n\n시간이 다소 걸릴 수 있습니다.`)) {
+            const daysDiff = Math.ceil((new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24)) + 1;
+            
+            const satelliteNames = {
+                'VIIRS_NOAA20_NRT': 'VIIRS NOAA-20',
+                'VIIRS_SNPP_NRT': 'VIIRS SNPP',
+                'MODIS_NRT': 'MODIS'
+            };
+            
+            if (!confirm(`${startDate} ~ ${endDate} (${daysDiff}일)\n위성: ${satelliteNames[satellite]}\n\n위 조건의 데이터를 FIRMS API에서 가져와 DB에 저장하시겠습니까?\n\n시간이 다소 걸릴 수 있습니다.`)) {
                 return;
             }
             
             fetchBtn.disabled = true;
-            fetchIcon.textContent = '⏳';
             fetchText.textContent = '가져오는 중...';
             
             const requestData = {
                 start_date: startDate,
-                end_date: endDate
+                end_date: endDate,
+                satellite: satellite
             };
-            
-            console.log('요청 데이터:', requestData);
-            console.log('요청 URL:', '/api/fetch-save/');
             
             fetch('/api/fetch-save/', {
                 method: 'POST',
@@ -429,68 +505,36 @@
                 },
                 body: JSON.stringify(requestData)
             })
-            .then(response => {
-                console.log('응답 상태:', response.status, response.statusText);
-                
-                // 응답을 텍스트로 먼저 읽기
-                return response.text().then(text => {
-                    console.log('응답 본문 (raw):', text);
-                    
-                    try {
-                        const data = JSON.parse(text);
-                        if (!response.ok) {
-                            throw new Error(data.message || `서버 오류 (${response.status})`);
-                        }
-                        return data;
-                    } catch (e) {
-                        console.error('JSON 파싱 오류:', e);
-                        console.error('응답 내용:', text);
-                        throw new Error(`응답 파싱 실패: ${e.message}`);
+            .then(response => response.text().then(text => {
+                try {
+                    const data = JSON.parse(text);
+                    if (!response.ok) {
+                        throw new Error(data.message || `서버 오류 (${response.status})`);
                     }
-                });
-            })
+                    return data;
+                } catch (e) {
+                    console.error('JSON 파싱 오류:', e);
+                    throw new Error(`응답 파싱 실패: ${e.message}`);
+                }
+            }))
             .then(data => {
-                console.log('성공 응답:', data);
-                
                 if (data.status === 'success') {
-                    alert(`✅ 성공!\n\n${data.message}\n기간: ${data.start_date} ~ ${data.end_date}`);
+                    alert(`성공!\n\n${data.message}\n기간: ${data.start_date} ~ ${data.end_date}`);
                     loadFireData();
                 } else {
-                    alert(`❌ 실패\n\n${data.message}`);
+                    alert(`실패\n\n${data.message}`);
                 }
                 
                 fetchBtn.disabled = false;
-                fetchIcon.textContent = '📥';
                 fetchText.textContent = 'FIRMS에서 가져오기';
             })
             .catch(error => {
-                console.error('=== 오류 발생 ===');
-                console.error('오류 타입:', error.name);
-                console.error('오류 메시지:', error.message);
-                console.error('오류 스택:', error.stack);
-                
-                alert(`❌ 데이터를 가져오는데 실패했습니다.\n\n${error.message}\n\n자세한 내용은 콘솔을 확인해주세요.`);
+                console.error('오류 발생:', error);
+                alert(`데이터를 가져오는데 실패했습니다.\n\n${error.message}`);
                 
                 fetchBtn.disabled = false;
-                fetchIcon.textContent = '📥';
                 fetchText.textContent = 'FIRMS에서 가져오기';
             });
-        }
-
-        // CSRF 토큰 가져오기
-        function getCookie(name) {
-            let cookieValue = null;
-            if (document.cookie && document.cookie !== '') {
-                const cookies = document.cookie.split(';');
-                for (let i = 0; i < cookies.length; i++) {
-                    const cookie = cookies[i].trim();
-                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                        break;
-                    }
-                }
-            }
-            return cookieValue;
         }
 
         // 기존 마커 제거
@@ -582,7 +626,7 @@
             return `
                 <div style="max-width: 500px; font-family: sans-serif;">
                     <h4 style="font-weight: bold; font-size: 1.125rem; margin-bottom: 0.75rem; padding-bottom: 0.5rem; border-bottom: 2px solid #e5e7eb;">
-                        🔥 클러스터 #${index + 1} - ${cluster.fires.length}건의 화재
+                        클러스터 #${index + 1} - ${cluster.fires.length}건의 화재
                     </h4>
                     
                     <div style="max-height: 300px; overflow-y: auto; margin-bottom: 0.75rem;">
@@ -639,18 +683,19 @@
         }
 
         // 클러스터 목록 업데이트
-        function updateClusterList(clusters) {
+        function updateClusterList(sortedClusters) {
             const clusterList = document.getElementById('clusterList');
             const clusterListCount = document.getElementById('clusterListCount');
             
-            clusterListCount.textContent = clusters.length;
+            clusterListCount.textContent = sortedClusters.length;
             
-            if (clusters.length === 0) {
+            if (sortedClusters.length === 0) {
                 clusterList.innerHTML = '<p class="text-gray-500 text-sm">감지된 클러스터가 없습니다.</p>';
                 return;
             }
             
-            clusterList.innerHTML = clusters.map((cluster, index) => {
+            clusterList.innerHTML = sortedClusters.map((cluster, index) => {
+                const originalIndex = clusters.indexOf(cluster);
                 const bgColor = 
                     cluster.maxConfidence === 'h' ? 'bg-red-500' :
                     cluster.maxConfidence === 'n' ? 'bg-orange-500' : 'bg-yellow-500';
@@ -660,12 +705,12 @@
                 return `
                     <div 
                         class="p-3 border border-gray-200 rounded-lg cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all"
-                        onclick="focusOnCluster(${index})"
+                        onclick="focusOnCluster(${originalIndex})"
                     >
                         <div class="flex items-start justify-between mb-2">
                             <div class="flex items-center gap-2">
                                 <div class="w-3 h-3 rounded-full ${bgColor}"></div>
-                                <span class="font-semibold text-sm">클러스터 #${index + 1}</span>
+                                <span class="font-semibold text-sm">클러스터 #${originalIndex + 1}</span>
                             </div>
                             <span class="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">
                                 ${cluster.fires.length}건
@@ -684,9 +729,16 @@
         function updateSearchResults(fires, clusters, startDate, endDate) {
             const days = Math.ceil((new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24)) + 1;
             const avgPerDay = fires.length > 0 ? (fires.length / days).toFixed(1) : 0;
+            const satellite = document.getElementById('satelliteSelect').value;
+            const satelliteNames = {
+                'VIIRS_NOAA20_NRT': 'VIIRS NOAA-20',
+                'VIIRS_SNPP_NRT': 'VIIRS SNPP',
+                'MODIS_NRT': 'MODIS'
+            };
             
             document.getElementById('searchPeriod').textContent = `${startDate} ~ ${endDate}`;
             document.getElementById('searchDays').textContent = days;
+            document.getElementById('searchSatellite').textContent = satelliteNames[satellite];
             document.getElementById('resultTotal').textContent = `${fires.length}건`;
             document.getElementById('resultCluster').textContent = `${clusters.length}개`;
             document.getElementById('resultAvg').textContent = `${avgPerDay}건/일`;
@@ -718,6 +770,10 @@
             
             if (startDate > endDate) {
                 alert('시작 날짜가 종료 날짜보다 늦을 수 없습니다.');
+                return;
+            }
+            
+            if (!validateDateRange(startDate, endDate)) {
                 return;
             }
             
